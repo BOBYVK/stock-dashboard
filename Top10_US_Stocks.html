@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>US Stocks — Top 20 Buy · Hold · Sell</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 50%, #e0f2fe 100%); color: #0c2340; min-height: 100vh; padding: 24px 28px; max-width: 1040px; margin: 0 auto; }
+
+  .top-section { background: #1e3a8a; border-radius: 16px; padding: 22px 24px 18px; margin-bottom: 0; }
+
+  .header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; }
+  .header h1 { font-size: 24px; font-weight: 800; color: #fff; letter-spacing: -0.5px; }
+  .header p { font-size: 13px; color: #93c5fd; margin-top: 4px; }
+  .meta { font-size: 11px; color: #93c5fd; text-align: right; line-height: 1.7; }
+  .meta strong { color: #fff; }
+
+  .price-status { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; font-size: 12px; color: #bfdbfe; flex-wrap: wrap; background: rgba(255,255,255,0.1); padding: 8px 14px; border-radius: 8px; }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; animation: pulse 2s infinite; flex-shrink: 0; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+  .price-status.loading .live-dot { background: #fbbf24; animation: none; }
+  .price-status.error .live-dot { background: #f87171; animation: none; }
+  .btn-refresh-price { background: rgba(255,255,255,0.2); color: #fff; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; padding: 4px 12px; font-size: 11px; font-weight: 600; cursor: pointer; }
+  .btn-refresh-price:hover { background: rgba(255,255,255,0.3); }
+
+  .tabs { display: flex; gap: 6px; margin-bottom: 16px; }
+  .tab-btn { flex: 1; padding: 10px 10px; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.18s; background: #fff; color: #1e3a8a; display: flex; align-items: center; justify-content: center; gap: 7px; }
+  .tab-btn .pill { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 12px; }
+  .tab-btn.active-buy  { background: #16a34a; color: #fff; box-shadow: 0 4px 14px rgba(22,163,74,0.5); }
+  .tab-btn.active-hold { background: #d97706; color: #fff; box-shadow: 0 4px 14px rgba(217,119,6,0.5); }
+  .tab-btn.active-sell { background: #dc2626; color: #fff; box-shadow: 0 4px 14px rgba(220,38,38,0.5); }
+  .pill-buy  { background: rgba(220,252,231,0.2); color: #bbf7d0; }
+  .pill-hold { background: rgba(254,243,199,0.2); color: #fde68a; }
+  .pill-sell { background: rgba(254,226,226,0.2); color: #fca5a5; }
+  .tab-btn.active-buy .pill, .tab-btn.active-hold .pill, .tab-btn.active-sell .pill { background: rgba(255,255,255,0.25); color: #fff; }
+
+  .summary-bar { display: flex; gap: 10px; margin-bottom: 4px; flex-wrap: wrap; }
+  .sum-card { flex: 1; min-width: 100px; background: #fff; border-radius: 10px; padding: 10px 14px; text-align: center; }
+  .sum-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; margin-bottom: 4px; }
+  .sum-val { font-size: 22px; font-weight: 800; }
+  .green { color: #16a34a; } .amber { color: #b45309; } .red { color: #dc2626; } .blue { color: #0369a1; }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); column-gap: 48px; row-gap: 16px; max-width: 1000px; margin: 0 auto; }
+  /* Wrapper is the grid item; holds rank + card side by side */
+  .card-wrapper { display: flex; align-items: flex-start; gap: 10px; }
+  .card-wrapper.open { grid-column: 1 / -1; }
+  @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+
+  /* CARD — compact row by default */
+  .card { background: rgba(255,255,255,0.82); border-radius: 12px; border-left: 5px solid #bae6fd; box-shadow: 0 1px 6px rgba(3,105,161,0.09); backdrop-filter: blur(6px); overflow: hidden; transition: box-shadow 0.2s; }
+  .card:hover { box-shadow: 0 4px 16px rgba(3,105,161,0.15); }
+  .card.buy-card        { border-left-color: #1e3a8a; }
+  .card.strong-buy-card { border-left-color: #1e40af; }
+  .card.hold-card       { border-left-color: #f59e0b; }
+  .card.sell-card       { border-left-color: #dc2626; }
+  .card.strong-sell-card{ border-left-color: #991b1b; }
+
+  /* CARD SUMMARY ROW — always visible */
+  .card-summary { display: flex; align-items: center; padding: 14px 16px; cursor: pointer; gap: 12px; user-select: none; }
+  .card-summary:hover { background: rgba(186,230,253,0.2); }
+  .rank { background: #1e3a8a; color: #fff; font-size: 11px; font-weight: 800; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 12px; box-shadow: 0 2px 8px rgba(30,58,138,0.35); letter-spacing: -0.5px; }
+  .ticker { font-size: 17px; font-weight: 900; color: #0369a1; letter-spacing: -0.3px; flex-shrink: 0; }
+  .ticker:hover { text-decoration: underline; }
+  .card-names { flex: 1; min-width: 0; }
+  .co  { font-size: 13px; font-weight: 600; color: #0c2340; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sec { font-size: 11px; color: #0284c7; margin-top: 1px; }
+  .badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 9px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.4px; flex-shrink: 0; }
+  .badge-sb { background: #dcfce7; color: #15803d; }
+  .badge-b  { background: #d1fae5; color: #059669; }
+  .badge-h  { background: #fef3c7; color: #b45309; }
+  .badge-s  { background: #fee2e2; color: #b91c1c; }
+  .badge-ss { background: #fecaca; color: #991b1b; }
+  .chevron { font-size: 12px; color: #0284c7; transition: transform 0.25s; flex-shrink: 0; }
+  .card.open .chevron { transform: rotate(180deg); }
+
+  /* CARD DETAILS — hidden until expanded */
+  .card-details { display: none; padding: 0 16px 16px; border-top: 1px solid #e0f2fe; }
+  .card.open .card-details { display: block; }
+
+  /* PRICE BLOCK */
+  .price-block { background: #e0f2fe; border-radius: 8px; padding: 10px 12px; margin: 12px 0 10px; }
+  .price-block-row { display: flex; justify-content: space-between; align-items: center; }
+  .live-price-label { font-size: 10px; font-weight: 600; color: #0369a1; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 3px; display: flex; align-items: center; gap: 4px; }
+  .mini-dot { width: 6px; height: 6px; border-radius: 50%; background: #16a34a; animation: pulse 2s infinite; }
+  .mini-dot.stale { background: #7dd3fc; animation: none; }
+  .live-price { font-size: 20px; font-weight: 800; color: #0c2340; }
+  .live-price.loading { color: #7dd3fc; }
+  .day-change { font-size: 12px; font-weight: 700; padding: 2px 7px; border-radius: 5px; }
+  .change-pos { background: #dcfce7; color: #15803d; }
+  .change-neg { background: #fee2e2; color: #b91c1c; }
+  .change-neu { background: #bae6fd; color: #0369a1; }
+  .target-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #0369a1; margin-top: 6px; }
+  .upside { font-size: 12px; font-weight: 700; padding: 2px 7px; border-radius: 5px; }
+  .up-pos { background: #dcfce7; color: #15803d; }
+  .up-neg { background: #fee2e2; color: #b91c1c; }
+
+  .assess-row { font-size: 11px; color: #0369a1; margin-bottom: 10px; display: flex; align-items: center; gap: 5px; }
+  .assess-row strong { color: #0369a1; }
+
+  .bar-meta { display: flex; justify-content: space-between; font-size: 11px; color: #0369a1; margin-bottom: 4px; }
+  .bar-track { height: 7px; background: #bae6fd; border-radius: 4px; overflow: hidden; display: flex; margin-bottom: 8px; }
+  .b-buy  { background: #16a34a; } .b-hold { background: #f59e0b; } .b-sell { background: #dc2626; }
+
+  .counts { display: flex; gap: 12px; font-size: 11px; color: #0369a1; margin-bottom: 11px; }
+  .counts span { display: flex; align-items: center; gap: 4px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .db { background: #16a34a; } .dh { background: #f59e0b; } .ds { background: #dc2626; }
+
+  .reason { font-size: 12px; color: #0c4a6e; line-height: 1.55; border-top: 1px solid #bae6fd; padding-top: 9px; }
+  .risk { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-right: 5px; text-transform: uppercase; vertical-align: middle; }
+  .r-low { background: #dcfce7; color: #15803d; } .r-med { background: #fef3c7; color: #b45309; } .r-high { background: #fee2e2; color: #b91c1c; }
+
+  /* FUNDAMENTAL SCORE */
+  .fund-section { margin-top: 10px; border-top: 1px solid #bae6fd; padding-top: 10px; }
+  .fund-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px; }
+  .fund-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #0369a1; }
+  .fund-score-badge { font-size: 13px; font-weight: 900; padding: 2px 10px; border-radius: 20px; }
+  .score-excellent { background: #dcfce7; color: #15803d; }
+  .score-strong    { background: #d1fae5; color: #059669; }
+  .score-fair      { background: #fef3c7; color: #b45309; }
+  .score-weak      { background: #fee2e2; color: #b91c1c; }
+  .score-poor      { background: #fecaca; color: #991b1b; }
+  .fund-bar-track { height: 6px; background: #bae6fd; border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
+  .fund-bar-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+  .fund-metrics { display: flex; gap: 6px; flex-wrap: wrap; }
+  .fund-metric { flex: 1; min-width: 80px; background: #e0f2fe; border-radius: 6px; padding: 5px 8px; text-align: center; }
+  .fund-metric-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: #0369a1; margin-bottom: 2px; }
+  .fund-metric-value { font-size: 13px; font-weight: 800; color: #0369a1; }
+  .fund-metric-value.loading { color: #bae6fd; }
+  .fund-metric-sub { font-size: 9px; color: #7dd3fc; margin-top: 1px; }
+
+/* PEER COMPETITIVE SECTION */
+.peer-section { margin-top: 10px; border-top: 1px solid #bae6fd; padding-top: 10px; }
+.peer-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.peer-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #0369a1; }
+.peer-track-wrap { margin-bottom: 4px; }
+.peer-track { position: relative; height: 10px; background: linear-gradient(to right, #fecaca, #fef3c7, #bbf7d0); border-radius: 5px; margin-bottom: 3px; }
+.peer-marker { position: absolute; top: 50%; transform: translate(-50%, -50%); width: 14px; height: 14px; border-radius: 50%; background: #0369a1; border: 2px solid #fff; box-shadow: 0 1px 5px rgba(0,0,0,0.25); transition: left 0.5s ease, background 0.3s; }
+.peer-track-labels { display: flex; justify-content: space-between; font-size: 9px; color: #64748b; }
+.peer-dropdown { margin-top: 6px; }
+.peer-dropdown summary { font-size: 11px; font-weight: 600; color: #0369a1; cursor: pointer; user-select: none; list-style: none; display: flex; align-items: center; gap: 5px; padding: 3px 0; }
+.peer-dropdown summary::-webkit-details-marker { display: none; }
+.peer-chevron { font-size: 9px; transition: transform 0.2s; display: inline-block; }
+.peer-dropdown[open] .peer-chevron { transform: rotate(90deg); }
+.peer-list { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; max-height: 260px; overflow-y: auto; }
+.peer-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px; background: #f0f9ff; font-size: 11px; }
+.peer-row.peer-current { background: #dbeafe; border: 1px solid #93c5fd; }
+.peer-rank { font-size: 10px; font-weight: 700; color: #94a3b8; min-width: 18px; }
+.peer-tkr { font-size: 12px; font-weight: 800; color: #0369a1; min-width: 52px; }
+.peer-tkr.is-current { color: #1e3a8a; }
+.peer-npm-bar-wrap { flex: 1; height: 5px; background: #e0f2fe; border-radius: 3px; overflow: visible; position: relative; }
+.peer-npm-bar { position: absolute; height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+.peer-npm-pos { background: #16a34a; left: 0; }
+.peer-npm-neg { background: #dc2626; right: 0; }
+.peer-npm-val { font-size: 11px; font-weight: 700; min-width: 46px; text-align: right; }
+.peer-npm-val.npm-pos { color: #15803d; }
+.peer-npm-val.npm-neg { color: #b91c1c; }
+.peer-current-star { font-size: 9px; color: #0369a1; }
+
+.disclaimer { margin-top: 24px; font-size: 11px; color: #475569; text-align: center; line-height: 1.7; }
+</style>
+</head>
+<body>
+
+<div class="top-section">
+  <div class="header">
+    <div>
+      <h1>🇺🇸 US Stocks — Top 20 Buy · Hold · Sell</h1>
+      <p>Wall Street analyst consensus ratings, live prices &amp; 12-month targets</p>
+    </div>
+    <div class="meta">Assessment date: <strong>June 5, 2026</strong><br>Sources: TipRanks · Finbold · CNBC · Zacks · BofA · Benzinga</div>
+  </div>
+
+  <div class="price-status loading" id="priceStatus">
+    <span class="live-dot"></span>
+    <span id="priceStatusText">Fetching live prices…</span>
+    <button class="btn-refresh-price" onclick="fetchLivePrices()">↻ Refresh Prices</button>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active-buy" id="tab-buy" onclick="switchTab('buy')">🟢 Top 20 <span class="pill pill-buy">BUY</span></button>
+    <button class="tab-btn" id="tab-hold" onclick="switchTab('hold')">🟡 Top 20 <span class="pill pill-hold">HOLD</span></button>
+    <button class="tab-btn" id="tab-sell" onclick="switchTab('sell')">🔴 Top 20 <span class="pill pill-sell">SELL</span></button>
+  </div>
+
+  <div class="summary-bar" id="summary-buy">
+    <div class="sum-card"><div class="sum-label">Avg Buy Analysts</div><div class="sum-val green">32</div></div>
+    <div class="sum-card"><div class="sum-label">Avg Price Target</div><div class="sum-val blue">$362</div></div>
+    <div class="sum-card"><div class="sum-label">Avg Upside</div><div class="sum-val green">+38%</div></div>
+    <div class="sum-card"><div class="sum-label">Avg Risk</div><div class="sum-val amber">Medium</div></div>
+  </div>
+  <div class="summary-bar" id="summary-hold" style="display:none">
+    <div class="sum-card"><div class="sum-label">Avg Buy Analysts</div><div class="sum-val amber">18</div></div>
+    <div class="sum-card"><div class="sum-label">Avg Price Target</div><div class="sum-val blue">$285</div></div>
+    <div class="sum-card"><div class="sum-label">Avg Upside</div><div class="sum-val amber">+9%</div></div>
+    <div class="sum-card"><div class="sum-label">Consensus</div><div class="sum-val amber">Neutral</div></div>
+  </div>
+  <div class="summary-bar" id="summary-sell" style="display:none">
+    <div class="sum-card"><div class="sum-label">Avg YTD Return</div><div class="sum-val red">-34%</div></div>
+    <div class="sum-card"><div class="sum-label">Avg Sell Analysts</div><div class="sum-val red">11</div></div>
+    <div class="sum-card"><div class="sum-label">Avg Downside</div><div class="sum-val red">-18%</div></div>
+    <div class="sum-card"><div class="sum-label">Consensus</div><div class="sum-val red">Avoid</div></div>
+  </div>
+</div>
+
+<hr style="border:none; border-top: 3px solid #1e3a8a; margin: 18px 0;">
+
+<div class="tab-panel active" id="panel-buy"><div class="grid" id="grid-buy"></div></div>
+<div class="tab-panel" id="panel-hold"><div class="grid" id="grid-hold"></div></div>
+<div class="tab-panel" id="panel-sell"><div class="grid" id="grid-sell"></div></div>
+
+<div class="disclaimer">⚠️ For informational purposes only. Not financial advice. Always conduct your own research before investing.<br>Live prices via Yahoo Finance. Analyst data: TipRanks, Finbold, CNBC, Zacks, BofA Research, Benzinga (June 2026).</div>
+
+<script>
+const ALL_STOCKS = {
+  BUY: [
+    { rank:1, ticker:"NVDA", company:"NVIDIA Corporation",      sector:"Semiconductors · AI",          rating:"Strong Buy", badgeClass:"badge-sb", buyCount:39, holdCount:2,  sellCount:0,  currentPrice:220.02, priceTarget:298,  assessDate:"Jun 5, 2026",  reason:"Dominant AI chip maker. Hyperscalers committing record capex; data center spend heading toward $3–4T/yr by 2030. Supply cannot keep up with demand.", risk:"Medium" },
+    { rank:2, ticker:"AMZN", company:"Amazon.com, Inc.",         sector:"Cloud · E-Commerce · AI",      rating:"Strong Buy", badgeClass:"badge-sb", buyCount:45, holdCount:1,  sellCount:0,  currentPrice:232.50, priceTarget:296,  assessDate:"Jun 5, 2026",  reason:"Highest conviction AWS + AI infrastructure play. 45 of 46 analysts say Buy. Cloud market CAGR of 16% through 2033.", risk:"Low" },
+    { rank:3, ticker:"AVGO", company:"Broadcom Inc.",            sector:"Semiconductors · Software",    rating:"Strong Buy", badgeClass:"badge-sb", buyCount:27, holdCount:2,  sellCount:0,  currentPrice:350.00, priceTarget:455,  assessDate:"Jun 4, 2026",  reason:"AI revenue expected to double in 2026. FY2025 revenue grew ~25%. Custom AI chip deals with hyperscalers provide multi-year visibility.", risk:"Medium" },
+    { rank:4, ticker:"MSFT", company:"Microsoft Corporation",    sector:"Cloud · Enterprise AI",        rating:"Buy",        badgeClass:"badge-b",  buyCount:35, holdCount:4,  sellCount:0,  currentPrice:452.00, priceTarget:650,  assessDate:"Jun 3, 2026",  reason:"Morgan Stanley Buy with $650 target. Azure + OpenAI partnership driving AI monetization. Copilot embedding across enterprise suite.", risk:"Low" },
+    { rank:5, ticker:"META", company:"Meta Platforms, Inc.",     sector:"Social Media · Ad Tech · AI",  rating:"Buy",        badgeClass:"badge-b",  buyCount:38, holdCount:5,  sellCount:1,  currentPrice:595.00, priceTarget:720,  assessDate:"Jun 5, 2026",  reason:"Revenue +26% YoY from AI-powered ad targeting. Llama models driving developer ecosystem. Unmatched 3B+ user data moat.", risk:"Medium" },
+    { rank:6, ticker:"GOOGL", company:"Alphabet Inc.",           sector:"Digital Ads · Cloud · AI",     rating:"Buy",        badgeClass:"badge-b",  buyCount:34, holdCount:5,  sellCount:1,  currentPrice:185.50, priceTarget:230,  assessDate:"Jun 2, 2026",  reason:"Still considered undervalued despite strong multi-year run. AI Overviews monetizing at scale. Google Cloud gaining enterprise share.", risk:"Low" },
+    { rank:7, ticker:"MU",   company:"Micron Technology",        sector:"Memory Semiconductors",        rating:"Buy",        badgeClass:"badge-b",  buyCount:28, holdCount:3,  sellCount:0,  currentPrice:118.00, priceTarget:300,  assessDate:"Jun 4, 2026",  reason:"Stifel reiterates Buy, PT $300. HBM memory demand so strong Micron can only fulfill 50–67% of key customer orders. Multi-year AI tailwind.", risk:"High" },
+    { rank:8, ticker:"TEAM", company:"Atlassian Corporation",    sector:"Enterprise SaaS",              rating:"Strong Buy", badgeClass:"badge-sb", buyCount:22, holdCount:3,  sellCount:0,  currentPrice:215.00, priceTarget:330,  assessDate:"Jun 1, 2026",  reason:"Over 50% upside per TipRanks consensus. AI-enhanced Jira/Confluence driving enterprise deals. Server-to-cloud migration accelerating.", risk:"Medium" },
+    { rank:9, ticker:"AMD",  company:"Advanced Micro Devices",   sector:"Semiconductors · AI Compute",  rating:"Buy",        badgeClass:"badge-b",  buyCount:30, holdCount:7,  sellCount:1,  currentPrice:148.00, priceTarget:185,  assessDate:"Jun 3, 2026",  reason:"Gaining meaningful AI GPU market share. MI300X traction building with hyperscalers. Analysts see AMD hitting inflection in AI data centers.", risk:"Medium" },
+    { rank:10,ticker:"CRM",  company:"Salesforce, Inc.",         sector:"Enterprise SaaS · AI CRM",     rating:"Buy",        badgeClass:"badge-b",  buyCount:29, holdCount:8,  sellCount:1,  currentPrice:310.00, priceTarget:380,  assessDate:"Jun 2, 2026",  reason:"Agentforce AI platform showing strong enterprise uptake. High switching costs and recurring revenue. AI driving next upsell cycle.", risk:"Low" },
+    { rank:11,ticker:"ORCL", company:"Oracle Corporation",         sector:"Cloud · Database · AI",         rating:"Strong Buy", badgeClass:"badge-sb", buyCount:25, holdCount:4,  sellCount:0,  currentPrice:168.00, priceTarget:210,  assessDate:"Jun 5, 2026",  reason:"AI infrastructure deals accelerating. OCI cloud revenue growing 40%+ YoY. Multi-billion dollar contracts with OpenAI and major hyperscalers drive multi-year visibility.", risk:"Low" },
+    { rank:12,ticker:"PANW", company:"Palo Alto Networks",         sector:"Cybersecurity · AI",            rating:"Strong Buy", badgeClass:"badge-sb", buyCount:32, holdCount:5,  sellCount:0,  currentPrice:205.00, priceTarget:260,  assessDate:"Jun 4, 2026",  reason:"AI-driven security platform outperforming. Platformization strategy consolidating enterprise spend. Zero-trust architecture adoption accelerating across Fortune 500.", risk:"Medium" },
+    { rank:13,ticker:"NOW",  company:"ServiceNow, Inc.",           sector:"Enterprise AI SaaS",            rating:"Buy",        badgeClass:"badge-b",  buyCount:28, holdCount:5,  sellCount:1,  currentPrice:1020.00,priceTarget:1250, assessDate:"Jun 3, 2026",  reason:"AI workflow automation gaining strong enterprise traction. Now platform becoming mission-critical for IT ops. Remaining performance obligation growing 25%+ YoY.", risk:"Low" },
+    { rank:14,ticker:"PLTR", company:"Palantir Technologies",      sector:"AI · Defense Analytics",       rating:"Buy",        badgeClass:"badge-b",  buyCount:18, holdCount:8,  sellCount:3,  currentPrice:42.00,  priceTarget:55,   assessDate:"Jun 2, 2026",  reason:"AIP platform driving commercial expansion. US government AI contracts remain robust. Rule of 40 comfortably exceeded. FCF margin expanding significantly.", risk:"Medium" },
+    { rank:15,ticker:"UBER", company:"Uber Technologies, Inc.",    sector:"Ridesharing · Delivery · AI",  rating:"Strong Buy", badgeClass:"badge-sb", buyCount:34, holdCount:3,  sellCount:0,  currentPrice:88.00,  priceTarget:115,  assessDate:"Jun 5, 2026",  reason:"Profitability inflection reached. EBITDA margins expanding strongly. Waymo autonomous vehicle partnership positions Uber as the platform layer for the future of mobility.", risk:"Medium" },
+    { rank:16,ticker:"APP",  company:"AppLovin Corporation",       sector:"Mobile AdTech · AI",            rating:"Strong Buy", badgeClass:"badge-sb", buyCount:20, holdCount:3,  sellCount:0,  currentPrice:380.00, priceTarget:520,  assessDate:"Jun 4, 2026",  reason:"AI advertising engine AXON 2.0 delivering extraordinary ROI for app developers. Revenue grew 40%+ YoY. Net margin exceeds 25%. Expanding beyond gaming into e-commerce.", risk:"High" },
+    { rank:17,ticker:"LLY",  company:"Eli Lilly and Company",      sector:"Pharmaceuticals · GLP-1",      rating:"Strong Buy", badgeClass:"badge-sb", buyCount:22, holdCount:3,  sellCount:0,  currentPrice:890.00, priceTarget:1100, assessDate:"Jun 3, 2026",  reason:"Zepbound and Mounjaro demand far outstripping supply. GLP-1 market could reach $150B+ by 2030. Pipeline depth in obesity, Alzheimer's, and diabetes is industry-leading.", risk:"Medium" },
+    { rank:18,ticker:"ANET", company:"Arista Networks, Inc.",      sector:"Cloud Networking",              rating:"Buy",        badgeClass:"badge-b",  buyCount:26, holdCount:4,  sellCount:0,  currentPrice:385.00, priceTarget:470,  assessDate:"Jun 2, 2026",  reason:"AI networking infrastructure boom driving record orders. Microsoft, Meta, Google building AI campuses requiring Arista's high-speed switching. Cloud capex at all-time highs.", risk:"Low" },
+    { rank:19,ticker:"CRWD", company:"CrowdStrike Holdings",       sector:"Cybersecurity · AI",            rating:"Buy",        badgeClass:"badge-b",  buyCount:30, holdCount:6,  sellCount:1,  currentPrice:430.00, priceTarget:520,  assessDate:"Jun 5, 2026",  reason:"Fully recovered from 2024 outage. Falcon platform expanding. Charlotte AI embedding across all modules. Net revenue retention remains above 120%. Market share gains accelerating.", risk:"Medium" },
+    { rank:20,ticker:"ARM",  company:"ARM Holdings plc",           sector:"Semiconductor IP · AI",        rating:"Buy",        badgeClass:"badge-b",  buyCount:22, holdCount:6,  sellCount:1,  currentPrice:155.00, priceTarget:195,  assessDate:"Jun 3, 2026",  reason:"Royalty rates rising with AI chip complexity. Virtually every AI device uses ARM architecture. v9 architecture driving 50% royalty rate uplift vs. prior generation.", risk:"Medium" },
+  ],
+  HOLD: [
+    { rank:1, ticker:"AAPL", company:"Apple Inc.",               sector:"Consumer Electronics · Services", rating:"Hold", badgeClass:"badge-h", buyCount:18, holdCount:14, sellCount:4,  currentPrice:207.00, priceTarget:225,  assessDate:"Jun 5, 2026",  reason:"WWDC 2026 AI announcements could catalyze but muted hardware upgrade cycle and stretched valuation limit near-term upside.", risk:"Low" },
+    { rank:2, ticker:"TSLA", company:"Tesla, Inc.",              sector:"EVs · Autonomy · Energy",         rating:"Hold", badgeClass:"badge-h", buyCount:16, holdCount:12, sellCount:8,  currentPrice:295.00, priceTarget:320,  assessDate:"Jun 4, 2026",  reason:"Robotaxi and FSD are long-term options but EV margin pressure, China competition, and CEO distraction keep analysts neutral.", risk:"High" },
+    { rank:3, ticker:"WMT",  company:"Walmart Inc.",             sector:"Retail · E-Commerce",             rating:"Hold", badgeClass:"badge-h", buyCount:20, holdCount:10, sellCount:3,  currentPrice:95.00,  priceTarget:98,   assessDate:"May 29, 2026", reason:"Erste Group downgraded to Hold on valuation. Excellent execution but P/E elevated vs. peers and growth rate.", risk:"Low" },
+    { rank:4, ticker:"COST", company:"Costco Wholesale Corp.",   sector:"Retail · Membership",             rating:"Hold", badgeClass:"badge-h", buyCount:21, holdCount:11, sellCount:1,  currentPrice:1020.00,priceTarget:1056, assessDate:"May 29, 2026", reason:"DA Davidson reiterates Neutral. Extraordinary business but premium valuation limits near-term entry conviction.", risk:"Low" },
+    { rank:5, ticker:"XOM",  company:"Exxon Mobil Corporation",  sector:"Energy · Oil & Gas",              rating:"Hold", badgeClass:"badge-h", buyCount:12, holdCount:8,  sellCount:1,  currentPrice:118.00, priceTarget:125,  assessDate:"Jun 1, 2026",  reason:"Split consensus — 40% Buy, 40% Hold. Strong balance sheet but oil price uncertainty and energy transition headwinds limit upside.", risk:"Medium" },
+    { rank:6, ticker:"JPM",  company:"JPMorgan Chase & Co.",     sector:"Banking · Financial Services",    rating:"Hold", badgeClass:"badge-h", buyCount:15, holdCount:13, sellCount:2,  currentPrice:235.00, priceTarget:245,  assessDate:"Jun 3, 2026",  reason:"Best-in-class bank trading near all-time highs. Rate cycle uncertainty and credit risk keep many analysts neutral.", risk:"Low" },
+    { rank:7, ticker:"V",    company:"Visa Inc.",                sector:"Payments · Fintech",              rating:"Hold", badgeClass:"badge-h", buyCount:22, holdCount:10, sellCount:1,  currentPrice:298.00, priceTarget:320,  assessDate:"Jun 2, 2026",  reason:"Excellent durable business but current price reflects fair value. Limited near-term catalysts and regulatory risk in payments.", risk:"Low" },
+    { rank:8, ticker:"BA",   company:"Boeing Company",           sector:"Aerospace · Defense",             rating:"Hold", badgeClass:"badge-h", buyCount:12, holdCount:14, sellCount:4,  currentPrice:182.00, priceTarget:195,  assessDate:"Jun 4, 2026",  reason:"Production ramp recovery ongoing. Airbus competition and execution risk on 737/777X programs keep most analysts cautious.", risk:"High" },
+    { rank:9, ticker:"DIS",  company:"Walt Disney Company",      sector:"Media · Streaming · Parks",       rating:"Hold", badgeClass:"badge-h", buyCount:17, holdCount:11, sellCount:3,  currentPrice:105.00, priceTarget:115,  assessDate:"May 30, 2026", reason:"Disney+ subscriber growth plateauing as linear TV declines. Parks remain strong but content investment costs are high.", risk:"Medium" },
+    { rank:10,ticker:"PFE",  company:"Pfizer Inc.",              sector:"Pharmaceuticals · Biotech",       rating:"Hold", badgeClass:"badge-h", buyCount:10, holdCount:15, sellCount:5,  currentPrice:28.00,  priceTarget:32,   assessDate:"Jun 1, 2026",  reason:"Post-COVID revenue normalization weighing on results. Pipeline potential but key drugs face patent cliffs. Dividend yield attractive.", risk:"Medium" },
+    { rank:11,ticker:"NFLX", company:"Netflix, Inc.",             sector:"Streaming · Entertainment",       rating:"Hold", badgeClass:"badge-h", buyCount:19, holdCount:14, sellCount:3,  currentPrice:1250.00,priceTarget:1320, assessDate:"Jun 4, 2026",  reason:"Ad-supported tier growing strongly but valuation now fully reflects the growth story. Password sharing crackdown benefits fading. Content spend remains elevated.", risk:"Medium" },
+    { rank:12,ticker:"SHOP", company:"Shopify Inc.",              sector:"E-Commerce SaaS",                 rating:"Hold", badgeClass:"badge-h", buyCount:20, holdCount:12, sellCount:2,  currentPrice:115.00, priceTarget:125,  assessDate:"Jun 3, 2026",  reason:"Strong e-commerce platform but expensive after a significant run. Merchant solutions growing but take-rate improvements slowing. Competition from BigCommerce and Amazon intensifying.", risk:"Medium" },
+    { rank:13,ticker:"INTC", company:"Intel Corporation",         sector:"Semiconductors · Foundry",        rating:"Hold", badgeClass:"badge-h", buyCount:12, holdCount:16, sellCount:8,  currentPrice:24.00,  priceTarget:28,   assessDate:"Jun 5, 2026",  reason:"Turnaround execution risk remains high. Foundry business burning cash. New CEO making structural changes but AI GPU market largely ceded to NVIDIA and AMD.", risk:"High" },
+    { rank:14,ticker:"UNH",  company:"UnitedHealth Group Inc.",   sector:"Managed Healthcare",              rating:"Hold", badgeClass:"badge-h", buyCount:14, holdCount:13, sellCount:5,  currentPrice:335.00, priceTarget:365,  assessDate:"Jun 4, 2026",  reason:"CEO controversies and DOJ investigation creating headline risk. Core managed care business remains strong but regulatory overhang and medical cost ratio concerns weigh on valuation.", risk:"High" },
+    { rank:15,ticker:"KO",   company:"The Coca-Cola Company",     sector:"Consumer Staples · Beverages",    rating:"Hold", badgeClass:"badge-h", buyCount:14, holdCount:12, sellCount:3,  currentPrice:72.00,  priceTarget:78,   assessDate:"May 30, 2026", reason:"Defensive dividend payer with consistent earnings but limited upside. Volume growth muted in developed markets. Premium valuation for a low-growth business.", risk:"Low" },
+    { rank:16,ticker:"JNJ",  company:"Johnson & Johnson",         sector:"Pharmaceuticals · MedTech",       rating:"Hold", badgeClass:"badge-h", buyCount:15, holdCount:13, sellCount:2,  currentPrice:158.00, priceTarget:168,  assessDate:"Jun 2, 2026",  reason:"Talc litigation largely resolved but pipeline concerns persist. MedTech segment growing steadily. Pharma faces biosimilar competition on key drugs. Dividend remains reliable.", risk:"Low" },
+    { rank:17,ticker:"MCD",  company:"McDonald's Corporation",    sector:"Fast Food · Restaurants",         rating:"Hold", badgeClass:"badge-h", buyCount:16, holdCount:14, sellCount:2,  currentPrice:312.00, priceTarget:330,  assessDate:"Jun 3, 2026",  reason:"Value menu driving traffic recovery. Wage inflation headwinds manageable. International growth solid. Premium valuation vs. restaurant peers limits conviction.", risk:"Low" },
+    { rank:18,ticker:"GE",   company:"GE Aerospace",              sector:"Aerospace Engines · Defense",     rating:"Hold", badgeClass:"badge-h", buyCount:18, holdCount:12, sellCount:2,  currentPrice:225.00, priceTarget:242,  assessDate:"Jun 1, 2026",  reason:"Strong engine order backlog and aftermarket services. Excellent execution post-spinoff but current valuation captures most near-term upside.", risk:"Medium" },
+    { rank:19,ticker:"AMGN", company:"Amgen Inc.",                sector:"Biotech · Pharmaceuticals",       rating:"Hold", badgeClass:"badge-h", buyCount:13, holdCount:14, sellCount:4,  currentPrice:285.00, priceTarget:305,  assessDate:"Jun 3, 2026",  reason:"Obesity drug MariTide Phase 3 results will be a major catalyst. Core business resilient but GLP-1 competition narrative creates overhang. High debt from Horizon acquisition.", risk:"Medium" },
+    { rank:20,ticker:"TXN",  company:"Texas Instruments Inc.",    sector:"Analog Semiconductors",           rating:"Hold", badgeClass:"badge-h", buyCount:14, holdCount:13, sellCount:5,  currentPrice:198.00, priceTarget:215,  assessDate:"Jun 2, 2026",  reason:"Industrial and auto analog cycle recovery underway but pace uncertain. Massive capex expansion in Texas and Utah weighing on near-term FCF. Long-term thesis intact.", risk:"Medium" },
+  ],
+  SELL: [
+    { rank:1, ticker:"ARES", company:"Ares Management Corp.",    sector:"Alternative Asset Management", rating:"Sell", badgeClass:"badge-s", buyCount:4,  holdCount:8,  sellCount:10, currentPrice:145.00, priceTarget:115,  assessDate:"Jun 5, 2026",  reason:"Worst S&P 500 performer YTD (-39.5%). Private credit concerns as rates stay higher for longer. Valuation was stretched entering the year.", risk:"High" },
+    { rank:2, ticker:"WDAY", company:"Workday, Inc.",            sector:"Enterprise HCM SaaS",          rating:"Sell", badgeClass:"badge-s", buyCount:10, holdCount:12, sellCount:8,  currentPrice:210.00, priceTarget:175,  assessDate:"Jun 4, 2026",  reason:"Down 36.7% YTD. HR software faces stiff AI-native competition. Growth deceleration and high valuation prompted multiple downgrades.", risk:"High" },
+    { rank:3, ticker:"FICO", company:"Fair Isaac Corporation",   sector:"Analytics · Credit Scoring",   rating:"Sell", badgeClass:"badge-s", buyCount:5,  holdCount:9,  sellCount:9,  currentPrice:1950.00,priceTarget:1400, assessDate:"Jun 3, 2026",  reason:"Down 35.9% YTD. Extreme valuation multiples. CFPB scrutiny of credit scoring and mortgage market slowdown weigh on sentiment.", risk:"High" },
+    { rank:4, ticker:"HUM",  company:"Humana Inc.",              sector:"Managed Healthcare",           rating:"Sell", badgeClass:"badge-s", buyCount:6,  holdCount:10, sellCount:10, currentPrice:255.00, priceTarget:195,  assessDate:"Jun 5, 2026",  reason:"Down 35.7% YTD. Medicare Advantage reimbursement cuts hitting margins. Medical cost ratio spiking above expectations.", risk:"High" },
+    { rank:5, ticker:"IT",   company:"Gartner, Inc.",            sector:"IT Research & Advisory",       rating:"Sell", badgeClass:"badge-s", buyCount:5,  holdCount:8,  sellCount:8,  currentPrice:495.00, priceTarget:380,  assessDate:"Jun 2, 2026",  reason:"Down 35.2% YTD. Enterprise IT budget scrutiny impacting subscriptions. Expensive valuation with slowing growth.", risk:"High" },
+    { rank:6, ticker:"INTU", company:"Intuit Inc.",              sector:"Financial Software · Tax",     rating:"Sell", badgeClass:"badge-s", buyCount:8,  holdCount:10, sellCount:7,  currentPrice:415.00, priceTarget:276,  assessDate:"Jun 5, 2026",  reason:"Goldman downgraded to Sell, PT $276. Down 33.5% YTD. AI-native competitors threaten TurboTax moat. Still expensive after the decline.", risk:"High" },
+    { rank:7, ticker:"KKR",  company:"KKR & Co. Inc.",           sector:"Private Equity · Alt. Assets", rating:"Sell", badgeClass:"badge-s", buyCount:6,  holdCount:9,  sellCount:8,  currentPrice:135.00, priceTarget:105,  assessDate:"Jun 3, 2026",  reason:"Down 34% YTD. Higher rates pressure PE deal multiples and exit windows. Fundraising pace slowing as LPs reassess allocations.", risk:"High" },
+    { rank:8, ticker:"CSGP", company:"CoStar Group, Inc.",       sector:"Real Estate Data & Analytics", rating:"Sell", badgeClass:"badge-s", buyCount:5,  holdCount:9,  sellCount:8,  currentPrice:21.00,  priceTarget:16,   assessDate:"Jun 4, 2026",  reason:"Down 33.8% YTD. Homes.com burning significant cash. Commercial real estate market challenges slowing core business growth.", risk:"High" },
+    { rank:9, ticker:"GDDY", company:"GoDaddy Inc.",             sector:"Web Hosting · Domain Services",rating:"Sell", badgeClass:"badge-s", buyCount:6,  holdCount:10, sellCount:8,  currentPrice:172.00, priceTarget:135,  assessDate:"Jun 1, 2026",  reason:"Down 33% YTD. AI website builder competition intensifying from Wix, Squarespace, and new AI-native entrants. Structural headwinds.", risk:"High" },
+    { rank:10,ticker:"HOOD", company:"Robinhood Markets, Inc.",  sector:"Retail Brokerage · Fintech",   rating:"Sell", badgeClass:"badge-s", buyCount:5,  holdCount:8,  sellCount:9,  currentPrice:30.00,  priceTarget:22,   assessDate:"Jun 2, 2026",  reason:"Down 32.9% YTD. Crypto revenue highly cyclical. Regulatory scrutiny ongoing. Competition from Schwab, Fidelity limits durable moat.", risk:"High" },
+    { rank:11,ticker:"WBA",  company:"Walgreens Boots Alliance", sector:"Pharmacy Retail",              rating:"Sell", badgeClass:"badge-s", buyCount:3,  holdCount:7,  sellCount:12, currentPrice:11.00,  priceTarget:8,    assessDate:"Jun 5, 2026",  reason:"Down 31% YTD. Ongoing store closure program accelerating. Pharmacy reimbursement under intense pressure from PBMs. Debt load complicates any private equity take-private scenario.", risk:"High" },
+    { rank:12,ticker:"MPW",  company:"Medical Properties Trust", sector:"Healthcare REIT",              rating:"Sell", badgeClass:"badge-s", buyCount:2,  holdCount:6,  sellCount:11, currentPrice:4.50,   priceTarget:3,    assessDate:"Jun 4, 2026",  reason:"Down 30% YTD. Major tenant defaults creating ongoing cash flow uncertainty. Highly leveraged balance sheet at risk if additional hospital operators fail.", risk:"High" },
+    { rank:13,ticker:"BYND", company:"Beyond Meat, Inc.",        sector:"Plant-Based Food",             rating:"Strong Sell", badgeClass:"badge-ss", buyCount:0, holdCount:3, sellCount:14, currentPrice:4.50, priceTarget:2,    assessDate:"Jun 3, 2026",  reason:"Down 29% YTD. Revenue declining for multiple consecutive years. Cash burn continues with no clear path to profitability. Plant-based meat category losing consumer interest.", risk:"High" },
+    { rank:14,ticker:"VFC",  company:"VF Corporation",           sector:"Apparel · Brands",             rating:"Sell", badgeClass:"badge-s", buyCount:3,  holdCount:8,  sellCount:10, currentPrice:14.00,  priceTarget:10,   assessDate:"Jun 2, 2026",  reason:"Down 28.5% YTD. North Face and Vans brands underperforming. Significant debt from Supreme acquisition. Dividend eliminated. Restructuring plan lacks investor confidence.", risk:"High" },
+    { rank:15,ticker:"LUMN", company:"Lumen Technologies, Inc.", sector:"Telecom · Fiber",              rating:"Sell", badgeClass:"badge-s", buyCount:2,  holdCount:5,  sellCount:13, currentPrice:2.80,   priceTarget:1.50, assessDate:"Jun 5, 2026",  reason:"Down 28% YTD. Debt restructuring completed but fundamentals deteriorating. Legacy enterprise revenue declining faster than new fiber growth can offset.", risk:"High" },
+    { rank:16,ticker:"PARA", company:"Paramount Global",         sector:"Media · Streaming",            rating:"Sell", badgeClass:"badge-s", buyCount:4,  holdCount:8,  sellCount:9,  currentPrice:12.00,  priceTarget:9,    assessDate:"Jun 3, 2026",  reason:"Down 27.5% YTD. Linear TV secular decline accelerating. Paramount+ subscriber growth stalling. Merger negotiations uncertainty and controlling shareholder complexity linger.", risk:"High" },
+    { rank:17,ticker:"RKT",  company:"Rocket Companies, Inc.",   sector:"Mortgage · Fintech",           rating:"Sell", badgeClass:"badge-s", buyCount:3,  holdCount:7,  sellCount:10, currentPrice:16.00,  priceTarget:12,   assessDate:"Jun 2, 2026",  reason:"Down 27% YTD. Mortgage origination volumes depressed with rates elevated. Mr. Cooper acquisition integration risk. Refinance market needs 200bps of rate cuts to recover.", risk:"High" },
+    { rank:18,ticker:"RIVN", company:"Rivian Automotive, Inc.",  sector:"Electric Vehicles",            rating:"Sell", badgeClass:"badge-s", buyCount:5,  holdCount:9,  sellCount:10, currentPrice:13.50,  priceTarget:10,   assessDate:"Jun 4, 2026",  reason:"Down 26.5% YTD. Cash burn rate still significant despite production improvements. Volkswagen partnership helps but profitability timeline pushed well out. R2 launch critical.", risk:"High" },
+    { rank:19,ticker:"LCID", company:"Lucid Group, Inc.",        sector:"Electric Vehicles",            rating:"Strong Sell", badgeClass:"badge-ss", buyCount:1, holdCount:4, sellCount:14, currentPrice:2.80, priceTarget:1.50, assessDate:"Jun 3, 2026", reason:"Down 26% YTD. Minimal volumes despite premium technology. Saudi Aramco backing provides a lifeline but path to commercial scale remains deeply unclear.", risk:"High" },
+    { rank:20,ticker:"OPEN", company:"Opendoor Technologies",    sector:"iBuying · PropTech",           rating:"Sell", badgeClass:"badge-s", buyCount:3,  holdCount:6,  sellCount:10, currentPrice:2.20,   priceTarget:1.50, assessDate:"Jun 2, 2026",  reason:"Down 25.5% YTD. iBuying model fundamentally challenged by elevated interest rates. Inventory risk remains high. Revenue collapsed from peak with no clear recovery path.", risk:"High" },
+  ]
+};
+
+// Live data stores
+const liveData        = {};  // price/change per ticker
+const analystData     = {};  // rating/counts/target per ticker
+const fundamentalData = {};  // ROE, P/E, Net Margin per ticker
+const peerCache       = {};  // peer NPM data per ticker (lazy-loaded on card open)
+
+// ── Fundamental scoring ──────────────────────────────────────────────────────
+function scoreROE(roe) {
+  if (roe === null || roe === undefined) return 5;
+  if (roe >= 30) return 10;
+  if (roe >= 20) return 8;
+  if (roe >= 10) return 6;
+  if (roe >= 0)  return 4;
+  return 1;
+}
+function scorePE(pe) {
+  if (pe === null || pe === undefined || pe <= 0) return 5;
+  if (pe < 15)  return 10;
+  if (pe < 25)  return 8;
+  if (pe < 40)  return 6;
+  if (pe < 70)  return 4;
+  return 2;
+}
+function scoreNPM(npm) {
+  if (npm === null || npm === undefined) return 5;
+  if (npm >= 25) return 10;
+  if (npm >= 15) return 8;
+  if (npm >= 8)  return 6;
+  if (npm >= 0)  return 4;
+  return 1;
+}
+function fundLabel(score) {
+  if (score >= 8.5) return { label:'Excellent', cls:'score-excellent' };
+  if (score >= 7)   return { label:'Strong',    cls:'score-strong' };
+  if (score >= 5)   return { label:'Fair',      cls:'score-fair' };
+  if (score >= 3)   return { label:'Weak',      cls:'score-weak' };
+  return                    { label:'Poor',     cls:'score-poor' };
+}
+function barColor(score) {
+  if (score >= 7) return '#16a34a';
+  if (score >= 5) return '#f59e0b';
+  return '#dc2626';
+}
+
+function updateFundamentalDisplays() {
+  Object.entries(fundamentalData).forEach(([ticker, f]) => {
+    const scoreBadge = document.getElementById('fscore-' + ticker);
+    const barFill    = document.getElementById('fbar-'   + ticker);
+    const roeEl      = document.getElementById('froe-'   + ticker);
+    const peEl       = document.getElementById('fpe-'    + ticker);
+    const npmEl      = document.getElementById('fnpm-'   + ticker);
+    if (!scoreBadge) return;
+
+    const s = ((scoreROE(f.roe) + scorePE(f.pe) + scoreNPM(f.npm)) / 3).toFixed(1);
+    const { label, cls } = fundLabel(parseFloat(s));
+
+    scoreBadge.textContent = `${s}/10 ${label}`;
+    scoreBadge.className   = 'fund-score-badge ' + cls;
+
+    if (barFill) {
+      barFill.style.width      = (parseFloat(s) * 10) + '%';
+      barFill.style.background = barColor(parseFloat(s));
+    }
+    if (roeEl) {
+      roeEl.classList.remove('loading');
+      roeEl.textContent = f.roe !== null ? f.roe.toFixed(1) + '%' : 'N/A';
+    }
+    if (peEl) {
+      peEl.classList.remove('loading');
+      peEl.textContent = f.pe !== null && f.pe > 0 ? f.pe.toFixed(1) + 'x' : 'N/A';
+    }
+    if (npmEl) {
+      npmEl.classList.remove('loading');
+      npmEl.textContent = f.npm !== null ? f.npm.toFixed(1) + '%' : 'N/A';
+    }
+  });
+}
+
+const ALL_TICKERS = [
+  ...ALL_STOCKS.BUY.map(s=>s.ticker),
+  ...ALL_STOCKS.HOLD.map(s=>s.ticker),
+  ...ALL_STOCKS.SELL.map(s=>s.ticker)
+].join(',');
+
+const FINNHUB_KEY = 'd8hlt29r01qrn5ecrrk0d8hlt29r01qrn5ecrrkg';
+
+// ── Finnhub helpers ──────────────────────────────────────────────────────────
+
+function ratingFromCounts(sb, b, h, s, ss) {
+  const total = sb + b + h + s + ss || 1;
+  const mean  = (1*sb + 2*b + 3*h + 4*s + 5*ss) / total;
+  if (mean < 1.5) return { rating:'Strong Buy',  badgeClass:'badge-sb' };
+  if (mean < 2.5) return { rating:'Buy',          badgeClass:'badge-b'  };
+  if (mean < 3.5) return { rating:'Hold',         badgeClass:'badge-h'  };
+  if (mean < 4.5) return { rating:'Sell',         badgeClass:'badge-s'  };
+  return             { rating:'Strong Sell',  badgeClass:'badge-ss' };
+}
+
+async function finnhub(path) {
+  const r = await fetch(`https://finnhub.io/api/v1${path}&token=${FINNHUB_KEY}`);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+// ── Price refresh (quotes only — keeps well within 60 req/min free tier) ─────
+
+async function fetchLivePrices() {
+  const status     = document.getElementById('priceStatus');
+  const statusText = document.getElementById('priceStatusText');
+  status.className = 'price-status loading';
+  statusText.textContent = 'Fetching live prices…';
+
+  const tickers = ALL_TICKERS.split(',');
+  let priceLoaded = 0;
+
+  // Only /quote — 75 calls in batches of 10 with 1.2 s gap ≈ 50 req/min, well under limit
+  for (let i = 0; i < tickers.length; i += 10) {
+    const batch = tickers.slice(i, i + 10);
+    const results = await Promise.all(
+      batch.map(t => finnhub(`/quote?symbol=${t}`).catch(() => null))
+    );
+    results.forEach((quote, idx) => {
+      if (quote && quote.c) {
+        liveData[batch[idx]] = { price: quote.c, change: quote.d, changePct: quote.dp };
+        priceLoaded++;
+      }
+    });
+    if (i + 10 < tickers.length) await new Promise(r => setTimeout(r, 1200));
+  }
+
+  updatePriceDisplays();
+  status.className = 'price-status';
+  statusText.textContent = `Live prices loaded: ${priceLoaded}/${tickers.length} · ${new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})} · Expand any stock for analyst & fundamental data`;
+}
+
+// ── Lazy card data (analyst + fundamentals) — fetched on first card open ─────
+
+const cardDataCache = {}; // 'loading' | 'ready' | 'error'
+
+async function fetchCardData(ticker) {
+  if (cardDataCache[ticker]) return;
+  cardDataCache[ticker] = 'loading';
+
+  // Show loading state in the card
+  const card = document.querySelector(`.card[data-ticker="${ticker}"]`);
+  if (card) {
+    const fscore = card.querySelector(`#fscore-${ticker}`);
+    if (fscore) { fscore.textContent = 'Loading…'; fscore.className = 'fund-score-badge score-fair'; }
+  }
+
+  try {
+    // 3 parallel calls for this one ticker — well within rate limit
+    const [recs, pt, metrics] = await Promise.all([
+      finnhub(`/stock/recommendation?symbol=${ticker}`).catch(() => null),
+      finnhub(`/stock/price-target?symbol=${ticker}`).catch(() => null),
+      finnhub(`/stock/metric?symbol=${ticker}&metric=all`).catch(() => null)
+    ]);
+
+    // Analyst recommendation (most recent period)
+    const rec = Array.isArray(recs) && recs[0];
+    if (rec) {
+      const { strongBuy:sb=0, buy:b=0, hold:h=0, sell:s=0, strongSell:ss=0, period } = rec;
+      analystData[ticker] = {
+        buyCount:  sb + b,
+        holdCount: h,
+        sellCount: s + ss,
+        assessDate: period ? new Date(period).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : null
+      };
+    }
+
+    // Price target
+    if (pt?.targetMean) {
+      if (!analystData[ticker]) analystData[ticker] = {};
+      analystData[ticker].priceTarget = Math.round(pt.targetMean);
+    }
+
+    // Fundamental metrics
+    const m = metrics?.metric;
+    if (m) {
+      fundamentalData[ticker] = {
+        roe: m.roeTTM ?? m.roeAnnual ?? null,
+        pe:  m.peTTM  ?? m.peAnnual  ?? null,
+        npm: m.netProfitMarginTTM ?? m.netProfitMarginAnnual ?? null
+      };
+    }
+
+    cardDataCache[ticker] = 'ready';
+  } catch (e) {
+    cardDataCache[ticker] = 'error';
+  }
+
+  // Re-render just the affected card
+  updateAnalystDisplays();
+  updateFundamentalDisplays();
+}
+
+function findStock(ticker) {
+  for (const list of Object.values(ALL_STOCKS)) {
+    const s = list.find(x => x.ticker === ticker);
+    if (s) return s;
+  }
+  return null;
+}
+
+function updatePriceDisplays() {
+  document.querySelectorAll('.card[data-ticker]').forEach(card => {
+    const ticker = card.dataset.ticker;
+    const d = liveData[ticker];
+    const priceEl  = card.querySelector('.live-price');
+    const changeEl = card.querySelector('.day-change');
+    const dotEl    = card.querySelector('.mini-dot');
+    const labelEl  = card.querySelector('.price-label-text');
+    if (!d || !priceEl || !d.price) return;
+
+    priceEl.textContent = '$' + fmt(d.price);
+
+    if (changeEl && d.change !== undefined) {
+      const sign = d.change >= 0 ? '+' : '';
+      changeEl.textContent = `${sign}${d.change.toFixed(2)} (${sign}${d.changePct.toFixed(2)}%)`;
+      changeEl.className = 'day-change ' + (d.change > 0 ? 'change-pos' : d.change < 0 ? 'change-neg' : 'change-neu');
+    }
+
+    const stock = findStock(ticker);
+    if (stock) {
+      const upsideEl = card.querySelector('.upside-val');
+      if (upsideEl) {
+        const upside = calcUpside(d.price, stock.priceTarget);
+        const sign = upside >= 0 ? '+' : '';
+        upsideEl.textContent = `${sign}${upside}% upside`;
+        upsideEl.className = 'upside upside-val ' + (upside >= 0 ? 'up-pos' : 'up-neg');
+      }
+    }
+
+    if (dotEl)   dotEl.classList.remove('stale');
+    if (labelEl) labelEl.textContent = 'Live Price';
+  });
+}
+
+function updateAnalystDisplays() {
+  document.querySelectorAll('.card[data-ticker]').forEach(card => {
+    const ticker = card.dataset.ticker;
+    const a = analystData[ticker];
+    if (!a) return;
+
+    // ⚠️ Rating badge is intentionally NOT overridden by Finnhub —
+    // tabs are curated manually; Finnhub only updates counts, target & date.
+
+    // Buy/Hold/Sell counts + bar
+    const total = (a.buyCount||0) + (a.holdCount||0) + (a.sellCount||0) || 1;
+    const bp = ((a.buyCount||0)/total*100).toFixed(1);
+    const hp = ((a.holdCount||0)/total*100).toFixed(1);
+    const sp = ((a.sellCount||0)/total*100).toFixed(1);
+
+    const barBuy  = card.querySelector('.b-buy');
+    const barHold = card.querySelector('.b-hold');
+    const barSell = card.querySelector('.b-sell');
+    if (barBuy)  barBuy.style.width  = bp + '%';
+    if (barHold) barHold.style.width = hp + '%';
+    if (barSell) barSell.style.width = sp + '%';
+
+    const countEls = card.querySelectorAll('.counts span');
+    if (countEls[0]) countEls[0].innerHTML = `<span class="dot db"></span>${a.buyCount||0} Buy`;
+    if (countEls[1]) countEls[1].innerHTML = `<span class="dot dh"></span>${a.holdCount||0} Hold`;
+    if (countEls[2]) countEls[2].innerHTML = `<span class="dot ds"></span>${a.sellCount||0} Sell`;
+
+    const barMeta = card.querySelector('.bar-meta span:last-child');
+    if (barMeta) barMeta.textContent = total + ' analysts';
+
+    // Assessment date
+    if (a.assessDate) {
+      const assessEl = card.querySelector('.assess-row strong');
+      if (assessEl) assessEl.textContent = a.assessDate + ' (Finnhub)';
+    }
+
+    // Price target
+    if (a.priceTarget) {
+      const stock = findStock(ticker);
+      const targetEl = card.querySelector('.target-row strong');
+      if (targetEl) targetEl.textContent = '$' + a.priceTarget.toLocaleString('en-US');
+      // Recalculate upside using live target
+      const price = liveData[ticker]?.price || stock?.currentPrice;
+      if (price) {
+        const upsideEl = card.querySelector('.upside-val');
+        if (upsideEl) {
+          const upside = calcUpside(price, a.priceTarget);
+          const sign = upside >= 0 ? '+' : '';
+          upsideEl.textContent = `${sign}${upside}% upside`;
+          upsideEl.className = 'upside upside-val ' + (upside >= 0 ? 'up-pos' : 'up-neg');
+        }
+      }
+    }
+  });
+}
+
+function riskClass(r) { return r==='Low'?'r-low':r==='High'?'r-high':'r-med'; }
+
+function fmt(n) { return n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+function calcUpside(price, target) { return ((target - price) / price * 100).toFixed(1); }
+
+function buildCards(data, containerId, cardClass) {
+  const g = document.getElementById(containerId);
+  g.innerHTML = '';
+  data.forEach(s => {
+    const total = s.buyCount + s.holdCount + s.sellCount || 1;
+    const bp = (s.buyCount/total*100).toFixed(1);
+    const hp = (s.holdCount/total*100).toFixed(1);
+    const sp = (s.sellCount/total*100).toFixed(1);
+    const upside = calcUpside(s.currentPrice, s.priceTarget);
+    const upsideClass = upside >= 0 ? 'up-pos' : 'up-neg';
+    const upsideSign  = upside >= 0 ? '+' : '';
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'card-wrapper';
+
+    const rankEl = document.createElement('div');
+    rankEl.className = 'rank';
+    rankEl.textContent = '#' + s.rank;
+
+    const div = document.createElement('div');
+    div.className = 'card ' + cardClass;
+    div.style.flex = '1';
+    div.dataset.ticker = s.ticker;
+    div.innerHTML = `
+      <!-- COMPACT SUMMARY ROW — always visible -->
+      <div class="card-summary" onclick="toggleCard(this)">
+        <span class="ticker">${s.ticker}</span>
+        <div class="card-names">
+          <div class="co">${s.company}</div>
+          <div class="sec">${s.sector}</div>
+        </div>
+        <span class="badge ${s.badgeClass}">${s.rating}</span>
+        <span class="chevron">▼</span>
+      </div>
+
+      <!-- EXPANDED DETAILS — shown on click -->
+      <div class="card-details">
+        <div class="price-block">
+          <div class="live-price-label">
+            <span class="mini-dot stale"></span>
+            <span class="price-label-text">Research Price (Jun 5)</span>
+          </div>
+          <div class="price-block-row">
+            <span class="live-price">$${fmt(s.currentPrice)}</span>
+            <span class="day-change change-neu"></span>
+          </div>
+          <div class="target-row">
+            <span>Analyst Target: <strong>$${s.priceTarget.toLocaleString('en-US')}</strong></span>
+            <span class="upside upside-val ${upsideClass}">${upsideSign}${upside}% upside</span>
+          </div>
+        </div>
+
+        <div class="assess-row">📅 Assessment date: <strong>${s.assessDate}</strong></div>
+
+        <div class="bar-meta"><span>Analyst Consensus</span><span>${total} analysts</span></div>
+        <div class="bar-track">
+          <div class="b-buy"  style="width:${bp}%"></div>
+          <div class="b-hold" style="width:${hp}%"></div>
+          <div class="b-sell" style="width:${sp}%"></div>
+        </div>
+        <div class="counts">
+          <span><span class="dot db"></span>${s.buyCount} Buy</span>
+          <span><span class="dot dh"></span>${s.holdCount} Hold</span>
+          <span><span class="dot ds"></span>${s.sellCount} Sell</span>
+        </div>
+        <div class="reason"><span class="risk ${riskClass(s.risk)}">${s.risk} Risk</span>${s.reason}</div>
+        <div class="fund-section">
+          <div class="fund-header">
+            <span class="fund-title">📊 Fundamental Score</span>
+            <span class="fund-score-badge score-fair" id="fscore-${s.ticker}">—</span>
+          </div>
+          <div class="fund-bar-track"><div class="fund-bar-fill" id="fbar-${s.ticker}" style="width:0%;background:#7dd3fc"></div></div>
+          <div class="fund-metrics">
+            <div class="fund-metric">
+              <div class="fund-metric-label">ROE</div>
+              <div class="fund-metric-value loading" id="froe-${s.ticker}">…</div>
+              <div class="fund-metric-sub">Return on Equity</div>
+            </div>
+            <div class="fund-metric">
+              <div class="fund-metric-label">P/E Ratio</div>
+              <div class="fund-metric-value loading" id="fpe-${s.ticker}">…</div>
+              <div class="fund-metric-sub">Price / Earnings</div>
+            </div>
+            <div class="fund-metric">
+              <div class="fund-metric-label">Net Margin</div>
+              <div class="fund-metric-value loading" id="fnpm-${s.ticker}">…</div>
+              <div class="fund-metric-sub">Profit Margin</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PEER COMPETITIVE INDEX -->
+        <div class="peer-section" id="peer-section-${s.ticker}">
+          <div class="peer-header">
+            <span class="peer-title">📈 Net Margin vs Peers</span>
+            <span class="fund-score-badge score-fair" id="peer-badge-${s.ticker}">Loading…</span>
+          </div>
+          <div class="peer-track-wrap">
+            <div class="peer-track"><div class="peer-marker" id="peer-marker-${s.ticker}" style="left:50%"></div></div>
+            <div class="peer-track-labels"><span>Lowest NPM</span><span>Highest NPM</span></div>
+          </div>
+          <details class="peer-dropdown" id="peer-details-${s.ticker}">
+            <summary><span class="peer-chevron">▶</span> Peer breakdown</summary>
+            <div class="peer-list" id="peer-list-${s.ticker}">
+              <div style="color:#7dd3fc;font-size:11px;padding:6px 0">Fetching peer data…</div>
+            </div>
+          </details>
+        </div>
+      </div>`;
+    wrapper.appendChild(rankEl);
+    wrapper.appendChild(div);
+    g.appendChild(wrapper);
+  });
+}
+
+function toggleCard(summaryEl) {
+  const card    = summaryEl.closest('.card');
+  const wrapper = card.closest('.card-wrapper');
+  card.classList.toggle('open');
+  if (wrapper) wrapper.classList.toggle('open');
+  if (card.classList.contains('open')) {
+    const ticker = card.dataset.ticker;
+    fetchCardData(ticker);   // analyst + fundamentals (lazy)
+    fetchPeerData(ticker);   // peer NPM comparison (lazy)
+  }
+}
+
+// ── Peer competitive index ───────────────────────────────────────────────────
+
+async function fetchPeerData(ticker) {
+  if (peerCache[ticker]) return;          // already loaded or loading
+  peerCache[ticker] = { status: 'loading' };
+
+  try {
+    // 1. Get peer list
+    const peers = await finnhub(`/stock/peers?symbol=${ticker}`);
+    if (!Array.isArray(peers)) throw new Error('no peers');
+
+    const peerTickers = peers.filter(t => t !== ticker).slice(0, 9); // max 9 peers
+
+    // 2. Fetch metrics for each peer in batches of 5
+    const peerMetrics = [];
+    for (let i = 0; i < peerTickers.length; i += 5) {
+      const batch = peerTickers.slice(i, i + 5);
+      const results = await Promise.all(
+        batch.map(t => finnhub(`/stock/metric?symbol=${t}&metric=all`).catch(() => null))
+      );
+      results.forEach((r, idx) => {
+        const m = r?.metric;
+        if (m) {
+          const npm = m.netProfitMarginTTM ?? m.netProfitMarginAnnual ?? null;
+          if (npm !== null) peerMetrics.push({ ticker: batch[idx], npm });
+        }
+      });
+      if (i + 5 < peerTickers.length) await new Promise(r => setTimeout(r, 800));
+    }
+
+    peerCache[ticker] = { status: 'ready', peers: peerMetrics };
+  } catch (e) {
+    peerCache[ticker] = { status: 'error', peers: [] };
+  }
+
+  renderPeerSection(ticker);
+}
+
+function renderPeerSection(ticker) {
+  const badgeEl  = document.getElementById('peer-badge-'  + ticker);
+  const markerEl = document.getElementById('peer-marker-' + ticker);
+  const listEl   = document.getElementById('peer-list-'   + ticker);
+  if (!badgeEl) return;
+
+  const cached = peerCache[ticker];
+  if (!cached || cached.status === 'loading') return;
+
+  if (cached.status === 'error' || cached.peers.length === 0) {
+    badgeEl.textContent = 'No peer data';
+    badgeEl.className   = 'fund-score-badge score-fair';
+    if (listEl) listEl.innerHTML = '<div style="color:#94a3b8;font-size:11px;padding:4px 0">No peer data available from Finnhub.</div>';
+    return;
+  }
+
+  const currentNpm = fundamentalData[ticker]?.npm ?? null;
+  const allEntries = [...cached.peers];
+  if (currentNpm !== null) allEntries.push({ ticker, npm: currentNpm, isCurrent: true });
+  allEntries.sort((a, b) => b.npm - a.npm);
+
+  const total   = allEntries.length;
+  const rankIdx = allEntries.findIndex(p => p.isCurrent);
+  const rank    = rankIdx + 1;
+
+  if (rank === 0 || currentNpm === null) {
+    badgeEl.textContent = 'N/A';
+    badgeEl.className   = 'fund-score-badge score-fair';
+    return;
+  }
+
+  // Position on track: 0% = worst (leftmost), 100% = best (rightmost)
+  const pct = total > 1 ? ((total - rank) / (total - 1)) * 100 : 50;
+
+  // Badge label and color
+  const rankSfx = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th';
+  const badgeTxt = `${rank}${rankSfx} of ${total}`;
+  const badgeCls = rank <= Math.ceil(total * 0.25) ? 'score-excellent' :
+                   rank <= Math.ceil(total * 0.5)  ? 'score-strong'    :
+                   rank <= Math.ceil(total * 0.75) ? 'score-fair'      : 'score-weak';
+  badgeEl.textContent = badgeTxt;
+  badgeEl.className   = 'fund-score-badge ' + badgeCls;
+
+  // Marker position and color
+  if (markerEl) {
+    markerEl.style.left       = Math.max(2, Math.min(98, pct)) + '%';
+    markerEl.style.background = rank <= Math.ceil(total * 0.25) ? '#16a34a' :
+                                rank <= Math.ceil(total * 0.5)  ? '#84cc16' :
+                                rank <= Math.ceil(total * 0.75) ? '#f59e0b' : '#dc2626';
+  }
+
+  // Peer list
+  if (!listEl) return;
+  const maxAbsNpm = Math.max(...allEntries.map(e => Math.abs(e.npm)), 1);
+  listEl.innerHTML = allEntries.map((p, i) => {
+    const isPos  = p.npm >= 0;
+    const barPct = Math.min(100, Math.abs(p.npm) / maxAbsNpm * 100).toFixed(1);
+    const cur    = p.isCurrent;
+    return `
+      <div class="peer-row ${cur ? 'peer-current' : ''}">
+        <span class="peer-rank">#${i + 1}</span>
+        <span class="peer-tkr ${cur ? 'is-current' : ''}">${p.ticker}${cur ? ' ◀' : ''}</span>
+        <div class="peer-npm-bar-wrap">
+          <div class="peer-npm-bar ${isPos ? 'peer-npm-pos' : 'peer-npm-neg'}" style="width:${barPct}%"></div>
+        </div>
+        <span class="peer-npm-val ${isPos ? 'npm-pos' : 'npm-neg'}">${p.npm.toFixed(1)}%</span>
+      </div>`;
+  }).join('');
+}
+
+function switchTab(tab) {
+  ['buy','hold','sell'].forEach(t => {
+    document.getElementById('panel-'+t).classList.toggle('active', t===tab);
+    document.getElementById('summary-'+t).style.display = t===tab ? 'flex' : 'none';
+    const btn = document.getElementById('tab-'+t);
+    btn.className = 'tab-btn';
+    if (t===tab) btn.classList.add('active-'+t);
+  });
+}
+
+buildCards(ALL_STOCKS.BUY,  'grid-buy',  'buy-card');
+buildCards(ALL_STOCKS.HOLD, 'grid-hold', 'hold-card');
+buildCards(ALL_STOCKS.SELL, 'grid-sell', 'sell-card');
+fetchLivePrices();
+</script>
+</body>
+</html>
